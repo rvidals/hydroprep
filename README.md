@@ -98,7 +98,9 @@ Abra uma *issue* ou envie um *pull request*.
 - [ ] 🗃️ Novos scripts para análise hidrológica
 - [ ] 📊 Mais exemplos de uso
 
-      ## 🤝 Contribuições
+---
+
+## 🤝 Contribuições
 
 Sinta-se à vontade para abrir issues, sugerir melhorias ou compartilhar dashboards inspiradores! 🚀
 
