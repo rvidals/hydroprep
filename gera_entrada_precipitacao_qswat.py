@@ -3,12 +3,24 @@ import pandas as pd
 from datetime import datetime
 from tqdm import tqdm   # Acrescentado tqdm para barra de progresso
 
-def ler_csv(arquivo_csv, cod_estacao):
+def ler_csv_ou_txt(arquivo_csv_ou_txt, cod_estacao):
     """Lê o csv."""
-    df = pd.read_csv(arquivo_csv, sep='\\t', engine='python')
+    if arquivo_csv_ou_txt.endswith('.csv'):
+        df = pd.read_csv(arquivo_csv_ou_txt, engine='python')
+    elif arquivo_csv_ou_txt.endswith('.txt'):
+        df = pd.read_csv(arquivo_csv_ou_txt, sep='\\t', engine='python')
+    else:
+        raise ValueError("Arquivo deve ser .csv ou .txt")
+    
     # Corrigir nomes das colunas para remover aspas e facilitar o acesso
     df.columns = [col.strip().replace('"', '') for col in df.columns]
-    df.rename(columns={"Cod.estacao": "cod_estacao"}, inplace=True)
+        
+    if "Cod.estacao" not in df.columns:
+        df.rename(columns={"Cod.estacao": "cod_estacao"}, inplace=True)
+        
+    if "cod_estacao" not in df.columns:
+        raise ValueError("A coluna 'cod_estacao' não foi encontrada no arquivo.")
+    
     df = df[df["cod_estacao"] == cod_estacao]
     return df
 
@@ -33,22 +45,42 @@ def criar_arquivo_estacao_virtual_txt(id, nome, lat, long, elevation, nome_arqui
         f.write(f"{df['ID'][0]},{df['NAME'][0]},{df['LAT'][0]},{df['LONG'][0]},{df['ELEVATION'][0]}\n")
     print(f"Linha adicionada ao arquivo '{nome_arquivo}.txt'.")
 
-def criar_arquivo_dados_estacao_virtual_txt(df_aquecimento, df, nome_estacao, var_nome, nome_arquivo ):
+def criar_arquivo_dados_estacao_virtual_txt(df, var_nome, nome_arquivo, aquecimento=True, df_aquecimento=None):
     """Cria um arquivo de dados climáticos formatado."""
-    
-    with open(os.path.join(os.getcwd(), "00_DADOS", "05_outros_dados", "TABELAS", f"{nome_arquivo}.txt"), 'w') as f:
-        f.write(f"{nome_estacao}\n")
-        for index, row in df_aquecimento.iterrows():
-            if row[var_nome] is pd.NA or pd.isna(row[var_nome]):
-                f.write("-99\n")
-            else:
-                f.write(f"{row[var_nome]}\n")
-        for index, row in df.iterrows():
-            if row[var_nome] is pd.NA or pd.isna(row[var_nome]):
-                f.write("-99\n")
-            else:
-                f.write(f"{row[var_nome]}\n")
-        print(f"Arquivo '{nome_arquivo}' criado com sucesso.")
+
+    caminho_arquivo = os.path.join(os.getcwd(), "00_DADOS", "05_outros_dados", "TABELAS", f"{nome_arquivo}.txt")
+    with open(caminho_arquivo, 'w') as f:
+        if aquecimento:
+            if df_aquecimento is None:
+                raise ValueError("df_aquecimento deve ser fornecido quando aquecimento é True.")
+            
+            # Quando tiver aquecimento, escrevo a data inicial do aquecimento
+            df_aquecimento['Data'] = pd.to_datetime(df_aquecimento['Data'])
+            primeira_data_aquecimento = df_aquecimento['Data'].min().strftime('%Y%m%d')
+            f.write(f"{primeira_data_aquecimento}\n")
+            
+            for _, row in df_aquecimento.iterrows():
+                if row[var_nome] is pd.NA or pd.isna(row[var_nome]):
+                    f.write("-99\n")
+                else:
+                    f.write(f"{row[var_nome]}\n")
+            for _, row in df.iterrows():
+                if row[var_nome] is pd.NA or pd.isna(row[var_nome]):
+                    f.write("-99\n")
+                else:
+                    f.write(f"{row[var_nome]}\n")
+            
+        else:
+            # Não tem aquecimento, só escreve o bloco normal
+            df['Data'] = pd.to_datetime(df['Data'])
+            primeira_data = df['Data'].min().strftime('%Y%m%d')
+            f.write(f"{primeira_data}\n")
+            for _, row in df.iterrows():
+                if row[var_nome] is pd.NA or pd.isna(row[var_nome]):
+                    f.write("-99\n")
+                else:
+                    f.write(f"{row[var_nome]}\n")
+    print(f"Arquivo '{nome_arquivo}' criado com sucesso.")
 
 def filtrar_datas(df, dt_inicial, dt_final):
     """Filtra o DataFrame com base nas datas.
@@ -79,7 +111,7 @@ def pipeline_precipitacao():
         criar_arquivo_estacao_virtual_txt(i, nome_arquivo_dado, lat, long, alt, nome_arquivo_est, write_header=(i == 0))
 
     for cod_estacao in cod_estacoes:
-        df = ler_csv(arquivo_csv, cod_estacao)
+        df = ler_csv_ou_txt(arquivo_csv, cod_estacao)
         nome_arquivo_dado = "p" + str(cod_estacao)
         nome_estacao = cod_estacao
         
@@ -109,7 +141,12 @@ def pipeline_precipitacao():
             
 
 
-        criar_arquivo_dados_estacao_virtual_txt(dados_aquecimento, df, nome_estacao, "Chuva", nome_arquivo_dado)
+        criar_arquivo_dados_estacao_virtual_txt(df, 
+                                                nome_estacao, 
+                                                "Chuva", 
+                                                nome_arquivo_dado, 
+                                                dados_aquecimento,
+                                                aquecimento=True)
 
 
 # def pipeline_vazao():
