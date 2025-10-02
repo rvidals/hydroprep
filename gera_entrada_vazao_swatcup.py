@@ -5,14 +5,33 @@ from tqdm import tqdm   # Acrescentado tqdm para barra de progresso
 import openpyxl
 from openpyxl.styles import Font, Alignment
 
-def ler_csv(arquivo_csv, cod_estacao, dt_inicio, dt_fim):
+def ler_csv(arquivo_csv_ou_txt, cod_estacao, dt_inicio, dt_fim, encoding="utf-8"):
     """Lê o csv."""
-    df = pd.read_csv(arquivo_csv, sep='\\t', engine='python')
+    if arquivo_csv_ou_txt.endswith('.csv'):
+        df = pd.read_csv(arquivo_csv_ou_txt, encoding=encoding , engine='python')
+    elif arquivo_csv_ou_txt.endswith('.txt'):
+        df = pd.read_csv(arquivo_csv_ou_txt, sep='\t', encoding=encoding, engine='python')
+    else:
+        raise ValueError("Arquivo deve ser .csv ou .txt")
+    
     # Corrigir nomes das colunas para remover aspas e facilitar o acesso
     df.columns = [col.strip().replace('"', '') for col in df.columns]
-    df.rename(columns={"Cod.estacao": "cod_estacao"}, inplace=True)
+       
+    # print(df.columns)   
+            
+    if "Cod.estacao" in df.columns:
+        df.rename(columns={"Cod.estacao": "cod_estacao"}, inplace=True)
+        
+    if "Cod_estacao" in df.columns:
+        df.rename(columns={"Cod_estacao": "cod_estacao"}, inplace=True)
+            
+    if "cod_estacao" not in df.columns:
+        raise ValueError("A coluna 'cod_estacao' não foi encontrada no arquivo.")
+    
     df = df[df["cod_estacao"] == cod_estacao]
+    
     df = df[(df["Data"] >= dt_inicio) & (df["Data"] <= dt_fim)]
+    
     return df
 
 def criar_arquivo_dados_vazao_SWATCUP_geral(df, var_nome: str, nome_arquivo: str, texto: str = "FLOW_OUT"):
@@ -113,27 +132,27 @@ def dataframe_vazao_formatado_condicionamento_dia(
       - (ano, mes, dia): define ano, mês e dia de início da contagem de n
     """
 
-    # Nome do arquivo int to str
+    df = df.copy()
     nome_arquivo = str(nome_arquivo)
 
     df['Data'] = pd.to_datetime(df['Data'])
-    df[var_nome] = df[var_nome].round(2)
-    df = df[df[var_nome].notna()]
+    # Agrupa para garantir datas únicas, caso haja duplicidade
+    daily = df.groupby(df['Data'])[[var_nome]].mean().reset_index()
+    daily[var_nome] = daily[var_nome].round(2)
+    daily = daily[daily[var_nome].notna()]
 
     # Encontrar o cutoff em proporção de linhas
-    cutoff_idx = int(len(df) * proporcao_cal)
-    cutoff_data = df.iloc[cutoff_idx]['Data']
+    cutoff_idx = int(len(daily) * proporcao_cal)
+    cutoff_data = daily.iloc[cutoff_idx]['Data']
     cutoff_year = cutoff_data.year
 
     if condicao == "cal":
-        # Calibração: até o último dia do ano do cutoff
         fim_cal = pd.Timestamp(year=cutoff_year, month=12, day=31)
-        df_sel = df[df['Data'] <= fim_cal]
+        df_sel = daily[daily['Data'] <= fim_cal]
         print("Calibração:", df_sel["Data"].min(), "→", df_sel["Data"].max())
     elif condicao == "val":
-        # Validação: a partir do primeiro dia do ano seguinte ao cutoff
         ini_val = pd.Timestamp(year=cutoff_year + 1, month=1, day=1)
-        df_sel = df[df['Data'] >= ini_val]
+        df_sel = daily[daily['Data'] >= ini_val]
         print("Validação:", df_sel["Data"].min(), "→", df_sel["Data"].max())
     else:
         raise ValueError("condicao deve ser 'cal' ou 'val'")
@@ -152,11 +171,12 @@ def dataframe_vazao_formatado_condicionamento_dia(
     else:
         raise ValueError("dt_modelo deve ser None, int ou (ano, mes, dia)")
 
-    dt_inicio = pd.Timestamp(year=ano_inicio, month=mes_inicio, day=dia_inicio)
-
     # Calcular n para cada linha baseada em dt_modelo
+    def calcula_n(row):
+        return (row['Data'] - pd.Timestamp(ano_inicio, mes_inicio, dia_inicio)).days + 1
+
     df_sel = df_sel.copy()
-    df_sel['n'] = (df_sel['Data'] - dt_inicio).dt.days + 1
+    df_sel['n'] = df_sel.apply(calcula_n, axis=1)
     
     return df_sel
 
@@ -250,7 +270,7 @@ def salvar_multiplos_dataframes_vazao_excel(
     print(f"Arquivo Excel '{nome_arquivo_excel}' criado com sucesso.")
 
 def salvar_todas_estacoes_excel_multiplas_abas(
-    dados_todas_estacoes, nome_arquivo: str = "todas_estacoes", texto: str = "FLOW_OUT", var_nome: str = "Vazao"
+    caminho_salvar: str, dados_todas_estacoes, nome_arquivo: str = "todas_estacoes", texto: str = "FLOW_OUT", var_nome: str = "Vazao"
 ):
     """
     Salva dados de múltiplas estações em um único arquivo Excel com abas separadas.
@@ -333,7 +353,7 @@ def salvar_todas_estacoes_excel_multiplas_abas(
     
     # Salvar arquivo
     nome_arquivo_excel = f"{nome_arquivo}.xlsx"
-    wb.save(nome_arquivo_excel)
+    wb.save(os.path.join(caminho_salvar, nome_arquivo_excel))
     print(f"Arquivo Excel '{nome_arquivo_excel}' criado com sucesso com {len(dados_todas_estacoes)} abas.")
 
 def salvar_dataframe_vazao_excel(
@@ -548,17 +568,23 @@ def criar_arquivo_dados_vazao_SWATCUP_validacao_txt(df, var_nome, nome_arquivo )
 
 if __name__ == "__main__":
     saida = r"C:\Users\rogerio.siqueira\Documents\DEMANDAS\Análise e entradas de dados Plu-Flu no QSWAT e SWATCUP"
-    flow_out = [13, 20, 8] # Lista de estações para processamento
-    estacoes = [60471200, 60474100, 60476100]  # Lista de estações para processamento
-    datas_inicio = ["1990-01-01", "1995-01-01", "1978-01-01"]
-    datas_fim = ["2023-12-31", "2023-12-31", "2014-12-31"]
+    flow_out = [8, 13, 20] # Lista de estações para processamento
+    estacoes = [60476100, 60471200, 60474100]  # Lista de estações para processamento
+    datas_inicio = ["1978-01-01", "1990-01-01", "1995-01-01"]
+    datas_fim = ["2014-12-31", "2022-12-31", "2022-12-31"]
     
     # Dicionário para armazenar dados de todas as estações
-    dados_todas_estacoes = {}
+    dados_todas_estacoes_mes = {}
+    dados_todas_estacoes_dia = {}
     
     for estacao, data_inicio, data_fim, num_flow_out in zip(estacoes, datas_inicio, datas_fim, flow_out):
-        df = ler_csv("FLU_Series_ANA.txt", estacao, data_inicio, data_fim)
-
+        df = ler_csv("FLU_Series_ANA.txt", 
+                     estacao, 
+                     data_inicio, 
+                     data_fim, 
+                     encoding='utf-8' # latin1 ou utf-8
+        )
+        
         # Checar se há nan ou null na coluna 'Vazao'
         if df['Vazao'].isnull().values.any():
             print("Existem valores nulos na coluna 'Vazao'")
@@ -569,7 +595,7 @@ if __name__ == "__main__":
         criar_arquivo_dados_vazao_SWATCUP_condicionamento_dia(saida, df, "Vazao", estacao, condicao="cal", texto="FLOW_OUT", proporcao_cal=0.7, dt_modelo=(1978,1,1))
         criar_arquivo_dados_vazao_SWATCUP_condicionamento_dia(saida, df, "Vazao", estacao, condicao="val", texto="FLOW_OUT", proporcao_cal=0.7, dt_modelo=(1978,1,1))
 
-        print("------------------------------------------------------------------------------")
+        # print("------------------------------------------------------------------------------")
 
         criar_arquivo_dados_vazao_SWATCUP_condicionamento_dia(saida, df, "Vazao", estacao, condicao="cal", texto="FLOW_OUT", proporcao_cal=0.3, dt_modelo=(1978,1,1))
         criar_arquivo_dados_vazao_SWATCUP_condicionamento_dia(saida, df, "Vazao", estacao, condicao="val", texto="FLOW_OUT", proporcao_cal=0.3, dt_modelo=(1978,1,1))
@@ -586,20 +612,33 @@ if __name__ == "__main__":
 
         print("------------------------------------------------------------------------------")
         
-        # Gerar todos os dataframes para a estação
-        df_cal_70 = dataframe_vazao_formatado_condicionamento_mes(df, "Vazao", estacao, condicao="cal", texto="FLOW_OUT", proporcao_cal=0.7, dt_modelo=(1978,1))
-        df_val_30 = dataframe_vazao_formatado_condicionamento_mes(df, "Vazao", estacao, condicao="val", texto="FLOW_OUT", proporcao_cal=0.3, dt_modelo=(1978,1))
-        df_cal_30 = dataframe_vazao_formatado_condicionamento_mes(df, "Vazao", estacao, condicao="cal", texto="FLOW_OUT", proporcao_cal=0.3, dt_modelo=(1978,1))
-        df_val_70 = dataframe_vazao_formatado_condicionamento_mes(df, "Vazao", estacao, condicao="val", texto="FLOW_OUT", proporcao_cal=0.7, dt_modelo=(1978,1))
+# Gerar todos os dataframes para as estação - Dia 
+        df_cal_70_d = dataframe_vazao_formatado_condicionamento_dia(df, "Vazao", estacao, condicao="cal", texto="FLOW_OUT", proporcao_cal=0.7, dt_modelo=(1978,1,1))
+        df_val_70_d = dataframe_vazao_formatado_condicionamento_dia(df, "Vazao", estacao, condicao="val", texto="FLOW_OUT", proporcao_cal=0.7, dt_modelo=(1978,1,1))
+        df_cal_30_d = dataframe_vazao_formatado_condicionamento_dia(df, "Vazao", estacao, condicao="cal", texto="FLOW_OUT", proporcao_cal=0.3, dt_modelo=(1978,1,1))
+        df_val_30_d = dataframe_vazao_formatado_condicionamento_dia(df, "Vazao", estacao, condicao="val", texto="FLOW_OUT", proporcao_cal=0.3, dt_modelo=(1978,1,1))
+        
+        # Gerar todos os dataframes para a estação -  Mês 
+        df_cal_70_m = dataframe_vazao_formatado_condicionamento_mes(df, "Vazao", estacao, condicao="cal", texto="FLOW_OUT", proporcao_cal=0.7, dt_modelo=(1978,1))
+        df_val_70_m = dataframe_vazao_formatado_condicionamento_mes(df, "Vazao", estacao, condicao="val", texto="FLOW_OUT", proporcao_cal=0.7, dt_modelo=(1978,1))
+        df_val_30_m = dataframe_vazao_formatado_condicionamento_mes(df, "Vazao", estacao, condicao="val", texto="FLOW_OUT", proporcao_cal=0.3, dt_modelo=(1978,1))
+        df_cal_30_m = dataframe_vazao_formatado_condicionamento_mes(df, "Vazao", estacao, condicao="cal", texto="FLOW_OUT", proporcao_cal=0.3, dt_modelo=(1978,1))
         
         # Lista dos dataframes e seus labels
-        lista_dfs = [df_cal_70, df_val_30, df_cal_30, df_val_70]
-        lista_labels = ['cal_0.7', 'val_0.3', 'cal_0.3', 'val_0.7']
+        lista_dfs_dia = [df_cal_70_d, df_val_70_d, df_cal_30_d, df_val_30_d ] 
+        lista_dfs_mes = [df_cal_70_m, df_val_70_m, df_cal_30_m, df_val_30_m]
+        lista_labels = ['cal_0.7', 'val_0.3', 'cal_0.3', 'val_0.7'] # Labels para cada dataframe de acordo com a proporção e condição
 
         # Armazenar dados da estação no dicionário
-        dados_todas_estacoes[estacao] = {
+        dados_todas_estacoes_mes[estacao] = {
             'num_flow_out': num_flow_out,
-            'lista_dataframes': lista_dfs,
+            'lista_dataframes': lista_dfs_mes,
+            'lista_labels': lista_labels
+        }
+
+        dados_todas_estacoes_dia[estacao] = {
+            'num_flow_out': num_flow_out,
+            'lista_dataframes': lista_dfs_dia,
             'lista_labels': lista_labels
         }
 
@@ -608,5 +647,6 @@ if __name__ == "__main__":
     
     # Após processar todas as estações, salvar em um único Excel com múltiplas abas
     print("Salvando todas as estações em um único Excel...")
-    salvar_todas_estacoes_excel_multiplas_abas(dados_todas_estacoes, "todas_estacoes_vazao_mensal", "FLOW_OUT", "Vazao")
+    salvar_todas_estacoes_excel_multiplas_abas(saida, dados_todas_estacoes_mes, "todas_estacoes_vazao_mensal", "FLOW_OUT", "Vazao")
+    salvar_todas_estacoes_excel_multiplas_abas(saida, dados_todas_estacoes_dia, "todas_estacoes_vazao_diario", "FLOW_OUT", "Vazao")
     print("Processamento completo finalizado!")
