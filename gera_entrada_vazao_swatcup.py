@@ -124,7 +124,7 @@ def dataframe_vazao_formatado_condicionamento_dia(
 ):
     """
     Cria um dataframe de dados de vazão diário formatado e faz o split em anos completos.
-    'condicao' pode ser 'cal' (calibração) ou 'val' (validação).
+    'condicao' pode ser 'cal' (calibração), 'val' (validação) ou 'todas' (todas as datas).
     'proporcao_cal' permite inverter: 0.3 para calibrar com 30% inicial, 0.7 padrão para 70% inicial.
     'dt_modelo' define o ANO, MÊS e DIA onde a contagem de dias começa.
       - None (default): usa ano, mês e dia do primeiro dado disponível
@@ -142,9 +142,12 @@ def dataframe_vazao_formatado_condicionamento_dia(
     daily = daily[daily[var_nome].notna()]
 
     # Encontrar o cutoff em proporção de linhas
-    cutoff_idx = int(len(daily) * proporcao_cal)
-    cutoff_data = daily.iloc[cutoff_idx]['Data']
-    cutoff_year = cutoff_data.year
+    if condicao == "todas":
+        pass
+    else:
+        cutoff_idx = int(len(daily) * proporcao_cal)
+        cutoff_data = daily.iloc[cutoff_idx]['Data']
+        cutoff_year = cutoff_data.year
 
     if condicao == "cal":
         fim_cal = pd.Timestamp(year=cutoff_year, month=12, day=31)
@@ -154,6 +157,9 @@ def dataframe_vazao_formatado_condicionamento_dia(
         ini_val = pd.Timestamp(year=cutoff_year + 1, month=1, day=1)
         df_sel = daily[daily['Data'] >= ini_val]
         print("Validação:", df_sel["Data"].min(), "→", df_sel["Data"].max())
+    elif condicao == "todas":
+        df_sel = daily
+        print("Todas as datas:", df_sel["Data"].min(), "→", df_sel["Data"].max())
     else:
         raise ValueError("condicao deve ser 'cal' ou 'val'")
 
@@ -320,8 +326,8 @@ def salvar_todas_estacoes_excel_multiplas_abas(
             cell_header.alignment = Alignment(horizontal='center')
             
             # Cabeçalho das colunas de dados
-            ws.cell(row=2, column=col*4 + 1, value=headers[0] + f": {N}")
-            ws.cell(row=2, column=col*4 + 2, value=headers[1] + f": {num_flow_out}")
+            ws.cell(row=2, column=col*4 + 1, value=headers[0] + f"= {N}")
+            ws.cell(row=2, column=col*4 + 2, value=headers[1] + f"_{num_flow_out}") 
             ws.cell(row=2, column=col*4 + 3, value='Vazão')
         
         # Escrever dados de cada dataframe em sua seção correspondente
@@ -498,7 +504,7 @@ def dataframe_vazao_formatado_condicionamento_mes(df, var_nome: str, nome_arquiv
 ):
     """
     Cria um arquivo de dados de vazão formatado e faz o split em anos completos.
-    'condicao' pode ser 'cal' (calibração) ou 'val' (validação).
+    'condicao' pode ser 'cal' (calibração), 'val' (validação) ou 'todas' (todas as datas).
     'proporcao_cal' permite inverter: 0.3 para calibrar com 30% inicial, 0.7 padrão para 70% inicial.
     'dt_modelo' define o ANO e MÊS onde a contagem de meses começa. Pode ser:
       - None (default): usa o ano e mês do primeiro dado disponível
@@ -516,9 +522,12 @@ def dataframe_vazao_formatado_condicionamento_mes(df, var_nome: str, nome_arquiv
     monthly = monthly[monthly[var_nome].notna()]
 
     # Encontrar o cutoff em proporção de linhas
-    cutoff_idx = int(len(monthly) * proporcao_cal)
-    cutoff_data = monthly.iloc[cutoff_idx]['Data']
-    cutoff_year = cutoff_data.year
+    if condicao == "todas":
+        pass    
+    else:
+        cutoff_idx = int(len(monthly) * proporcao_cal)
+        cutoff_data = monthly.iloc[cutoff_idx]['Data']
+        cutoff_year = cutoff_data.year
 
     if condicao == "cal":
         # Calibração: até o último dia do ano do cutoff
@@ -530,6 +539,9 @@ def dataframe_vazao_formatado_condicionamento_mes(df, var_nome: str, nome_arquiv
         ini_val = pd.Timestamp(year=cutoff_year + 1, month=1, day=1)
         df_sel = monthly[monthly['Data'] >= ini_val]
         print("Validação:", df_sel["Data"].min(), "→", df_sel["Data"].max())
+    elif condicao == "todas":
+        df_sel = monthly
+        print("Todas as datas:", df_sel["Data"].min(), "→", df_sel["Data"].max())
     else:
         raise ValueError("condicao deve ser 'cal' ou 'val'")
 
@@ -617,17 +629,19 @@ if __name__ == "__main__":
         df_val_70_d = dataframe_vazao_formatado_condicionamento_dia(df, "Vazao", estacao, condicao="val", texto="FLOW_OUT", proporcao_cal=0.7, dt_modelo=(1978,1,1))
         df_cal_30_d = dataframe_vazao_formatado_condicionamento_dia(df, "Vazao", estacao, condicao="cal", texto="FLOW_OUT", proporcao_cal=0.3, dt_modelo=(1978,1,1))
         df_val_30_d = dataframe_vazao_formatado_condicionamento_dia(df, "Vazao", estacao, condicao="val", texto="FLOW_OUT", proporcao_cal=0.3, dt_modelo=(1978,1,1))
-        
+        df_todas_d = dataframe_vazao_formatado_condicionamento_dia(df, "Vazao", estacao, condicao="todas", texto="FLOW_OUT", proporcao_cal=1, dt_modelo=(1978,1,1))
+
         # Gerar todos os dataframes para a estação -  Mês 
         df_cal_70_m = dataframe_vazao_formatado_condicionamento_mes(df, "Vazao", estacao, condicao="cal", texto="FLOW_OUT", proporcao_cal=0.7, dt_modelo=(1978,1))
         df_val_70_m = dataframe_vazao_formatado_condicionamento_mes(df, "Vazao", estacao, condicao="val", texto="FLOW_OUT", proporcao_cal=0.7, dt_modelo=(1978,1))
         df_val_30_m = dataframe_vazao_formatado_condicionamento_mes(df, "Vazao", estacao, condicao="val", texto="FLOW_OUT", proporcao_cal=0.3, dt_modelo=(1978,1))
         df_cal_30_m = dataframe_vazao_formatado_condicionamento_mes(df, "Vazao", estacao, condicao="cal", texto="FLOW_OUT", proporcao_cal=0.3, dt_modelo=(1978,1))
-        
+        df_todas_m = dataframe_vazao_formatado_condicionamento_mes(df, "Vazao", estacao, condicao="todas", texto="FLOW_OUT", proporcao_cal=1, dt_modelo=(1978,1))
+
         # Lista dos dataframes e seus labels
-        lista_dfs_dia = [df_cal_70_d, df_val_70_d, df_cal_30_d, df_val_30_d ] 
-        lista_dfs_mes = [df_cal_70_m, df_val_70_m, df_cal_30_m, df_val_30_m]
-        lista_labels = ['cal_0.7', 'val_0.3', 'cal_0.3', 'val_0.7'] # Labels para cada dataframe de acordo com a proporção e condição
+        lista_dfs_dia = [df_cal_70_d, df_val_70_d, df_cal_30_d, df_val_30_d, df_todas_d] 
+        lista_dfs_mes = [df_cal_70_m, df_val_70_m, df_cal_30_m, df_val_30_m, df_todas_m]
+        lista_labels = ['cal_0.7', 'val_0.3', 'cal_0.3', 'val_0.7', 'Completo'] # Labels para cada dataframe de acordo com a proporção e condição
 
         # Armazenar dados da estação no dicionário
         dados_todas_estacoes_mes[estacao] = {
