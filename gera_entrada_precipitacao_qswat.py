@@ -56,7 +56,14 @@ def criar_arquivo_dados_estacao_virtual_txt(df, var_nome, nome_arquivo, aquecime
             
             # Quando tiver aquecimento, escrevo a data inicial do aquecimento
             df_aquecimento['Data'] = pd.to_datetime(df_aquecimento['Data'])
-            primeira_data_aquecimento = df_aquecimento['Data'].min().strftime('%Y%m%d')
+            n_anos = (df_aquecimento['Data'].max().year - df_aquecimento['Data'].min().year)+1
+            print(f"O número de anos de aquecimento é: {n_anos}")
+            primeira_data_aquecimento = df_aquecimento['Data'].min()
+            # subtrair n_anos
+            nova_data = primeira_data_aquecimento - pd.DateOffset(years=n_anos)
+            # se quiser no formato YYYYMMDD (string)
+            primeira_data_aquecimento = nova_data.strftime('%Y%m%d')
+            #primeira_data_aquecimento = df_aquecimento['Data'].min().strftime('%Y%m%d')
             f.write(f"{primeira_data_aquecimento}\n")
             
             for _, row in df_aquecimento.iterrows():
